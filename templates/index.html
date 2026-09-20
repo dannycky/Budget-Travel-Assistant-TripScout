@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TripScout — Your AI Budget Travel Companion</title>
+  <!-- daisyUI 5 + Tailwind CSS v4 (browser build) via CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <style type="text/tailwindcss">
+    
+    @theme {
+      --color-primary: #58009e;
+      --color-primary-dark: #3d006e;
+      --color-secondary: #e6007e;
+      --color-base-100: #ffffff;
+      --color-base-200: #f7f2fc;
+      --color-base-300: #eadff6;
+    }
+  </style>
+  <style>
+    /* ChatGPT-style: hide daisyUI chat bubble tails, use flat modern bubbles */
+    .chat-bubble::before, .chat-bubble::after { display: none !important; }
+    #chat-box::-webkit-scrollbar { width: 6px; }
+    #chat-box::-webkit-scrollbar-thumb { background: #d9c6ee; border-radius: 3px; }
+    #chat-box::-webkit-scrollbar-track { background: transparent; }
+
+    @keyframes pop-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .msg-anim { animation: pop-in 0.25s ease-out; }
+
+    @keyframes fly {
+      0%, 100% { transform: translateX(0) rotate(0deg); }
+      50%      { transform: translateX(6px) rotate(8deg); }
+    }
+    .plane-fly { animation: fly 1.4s ease-in-out infinite; display: inline-block; }
+
+    /* Formatted AI response content */
+    .ai-content p { margin: 0 0 10px; }
+    .ai-content p:last-child { margin-bottom: 0; }
+    .ai-content strong { font-weight: 700; color: #58009e; }
+    .ai-content ol, .ai-content ul { margin: 4px 0 12px; padding-left: 22px; }
+    .ai-content li { margin-bottom: 6px; }
+    .ai-content li::marker { color: #e6007e; font-weight: 700; }
+    .ai-content a { color: #58009e; text-decoration: underline; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-[#f5f0fa] via-[#efe4f9] to-[#e9d9f7] min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-3xl bg-base-100 rounded-3xl shadow-[0_16px_48px_rgba(88,0,158,0.15)] overflow-hidden flex flex-col h-[88vh]">
+
+    <!-- Header -->
+    <div class="flex items-center gap-3 px-6 py-4 border-b border-base-300 bg-white">
+      <div class="w-11 h-11 rounded-full bg-primary text-white flex items-center justify-center text-xl shrink-0">✈️</div>
+      <div class="min-w-0">
+        <h1 class="text-lg font-extrabold tracking-wide text-base-content leading-tight">TripScout</h1>
+        <p class="text-xs text-base-content/60">Big adventures, small budgets — flights, hotels & local secrets</p>
+      </div>
+      <span class="badge badge-primary badge-outline ml-auto shrink-0">LIVE</span>
+    </div>
+
+    <!-- Chat area -->
+    <div id="chat-box" class="flex-1 overflow-y-auto px-4 sm:px-8 py-6 flex flex-col gap-6 bg-white">
+
+      <!-- Welcome screen -->
+      <div id="welcome" class="my-auto text-center px-4">
+        <div class="text-5xl mb-3">🧳</div>
+        <p class="text-xl font-bold text-base-content">Where to next, without breaking the bank?</p>
+        <p class="text-sm text-base-content/60 mt-1">I hunt down cheap flights, budget stays and local secrets — just tell me where you're dreaming of.</p>
+        <div class="flex flex-wrap gap-2 justify-center mt-6">
+          <button class="btn btn-sm btn-outline btn-primary rounded-full" onclick="quickAsk('Find me the cheapest flights from Hong Kong to Tokyo next month')">✈️ Cheapest flights to Tokyo</button>
+          <button class="btn btn-sm btn-outline btn-primary rounded-full" onclick="quickAsk('Find me a budget hotel in Osaka for 2 adults under $100 per night')">🏨 Budget hotel in Osaka</button>
+          <button class="btn btn-sm btn-outline btn-primary rounded-full" onclick="quickAsk('What are the best free attractions in Seoul?')">🆓 Free attractions in Seoul</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Input bar (ChatGPT-style floating pill) -->
+    <div class="px-4 sm:px-8 pb-2 pt-1 bg-white">
+      <div class="join w-full rounded-2xl border border-base-300 bg-base-200/50 shadow-sm">
+        <input id="user-input" type="text" autocomplete="off"
+               class="input join-item w-full bg-transparent border-0 focus:outline-none focus:ring-0 text-[15px] placeholder:text-base-content/40"
+               placeholder="Ask about your trip..." />
+        <button id="send-btn" onclick="sendMessage()"
+                class="btn join-item btn-primary rounded-2xl border-0 px-6 font-bold">
+          Send <span class="plane-fly">✈</span>
+        </button>
+      </div>
+      <p class="text-center text-[11px] text-base-content/40 py-2">Live flight & hotel deals + insider travel guides, on a budget</p>
+    </div>
+  </div>
+
+  <script>
+    const chatBox = document.getElementById("chat-box");
+    const inputBox = document.getElementById("user-input");
+    const sendBtn = document.getElementById("send-btn");
+    const welcome = document.getElementById("welcome");
+
+    function scrollBottom() { chatBox.scrollTop = chatBox.scrollHeight; }
+
+    // Escape HTML to prevent injection from model output
+    function escapeHtml(s) {
+      return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // Convert **bold** to <strong> (removing the ** markers)
+    function renderBold(s) {
+      return s.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+    }
+
+    // Convert bare URLs into clickable links (http/https only, safe after escapeHtml)
+    function renderLinks(s) {
+      return s.replace(/(https?:\/\/[^\s&lt;&gt;\)]+)/g, '<a href="$1" target="_blank" rel="noopener" class="link link-primary underline break-all">$1</a>');
+    }
+
+    // Format a raw AI response into readable HTML:
+    // - splits walls of text into paragraphs
+    // - renders **bold** as real bold text
+    // - renders numbered lists (1. ...) and bullet lists (- ...) as styled lists
+    function formatResponse(raw) {
+      let text = escapeHtml(raw);
+      text = text.replace(/\r\n/g, "\n");
+
+      const blocks = [];
+      let currentList = null; // "ol" | "ul" | null
+      let listItems = [];
+
+      const flushList = () => {
+        if (currentList) { blocks.push({ type: currentList, items: listItems }); currentList = null; }
+      };
+
+      const lines = text.split("\n");
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) { flushList(); continue; }
+
+        const olMatch = line.match(/^(\d+)[.)]\s+(.*)$/);
+        const ulMatch = (!olMatch && !line.startsWith("**")) ? line.match(/^[-*]\s+(.*)$/) : null;
+
+        if (olMatch) {
+          if (currentList !== "ol") { flushList(); currentList = "ol"; listItems = []; }
+          listItems.push(olMatch[2]);
+        } else if (ulMatch) {
+          if (currentList !== "ul") { flushList(); currentList = "ul"; listItems = []; }
+          listItems.push(ulMatch[1]);
+        } else {
+          flushList();
+          blocks.push({ type: "p", text: line });
+        }
+      }
+      flushList();
+
+      let html = "";
+      for (const b of blocks) {
+        if (b.type === "ol") {
+          html += `<ol>${b.items.map(i => `<li>${renderLinks(renderBold(i))}</li>`).join("")}</ol>`;
+        } else if (b.type === "ul") {
+          html += `<ul>${b.items.map(i => `<li>${renderLinks(renderBold(i))}</li>`).join("")}</ul>`;
+        } else {
+          html += `<p>${renderLinks(renderBold(b.text))}</p>`;
+        }
+      }
+      return html;
+    }
+
+    // ChatGPT-style message rows: avatar + name + content (no bubble for AI)
+    function addMsg(kind, sender, text, isMarkdown = false) {
+      if (welcome && welcome.parentNode) welcome.remove();
+
+      const row = document.createElement("div");
+      row.className = "msg-anim flex gap-3 " + (kind === "human" ? "justify-end" : "");
+
+      if (kind === "ai" || kind === "error") {
+        const avatar = document.createElement("div");
+        avatar.className = "w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm shrink-0";
+        avatar.textContent = "✈";
+        row.appendChild(avatar);
+      }
+
+      const bubble = document.createElement("div");
+      if (kind === "human") {
+        bubble.className = "chat chat-end";
+        bubble.innerHTML = `<div class="chat-bubble chat-bubble-primary max-w-sm text-[15px]">${escapeHtml(text).replace(/\n/g, "<br>")}</div>`;
+      } else if (kind === "error") {
+        bubble.className = "min-w-0";
+        bubble.innerHTML = `<div class="text-[11px] font-bold uppercase tracking-wider text-base-content/50 mb-1">${sender}</div>
+          <div role="alert" class="alert alert-error py-2 px-3 text-sm">${escapeHtml(text)}</div>`;
+      } else {
+        bubble.className = "ai-content min-w-0 text-[15px] leading-relaxed text-base-content";
+        bubble.innerHTML = `<div class="text-[11px] font-bold uppercase tracking-wider text-base-content/50 mb-1">${sender}</div>` +
+          (isMarkdown ? formatResponse(text) : escapeHtml(text).replace(/\n/g, "<br>"));
+      }
+      row.appendChild(bubble);
+      chatBox.appendChild(row);
+      scrollBottom();
+      return row;
+    }
+
+    function showLoading() {
+      const row = document.createElement("div");
+      row.id = "loading-msg";
+      row.className = "msg-anim flex gap-3 items-center";
+      row.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center text-sm shrink-0">✈</div>
+        <div class="flex items-center gap-3 bg-base-200 rounded-2xl px-4 py-3">
+          <span class="plane-fly text-base">✈️</span>
+          <span class="loading loading-dots loading-md text-primary"></span>
+        </div>`;
+      chatBox.appendChild(row);
+      scrollBottom();
+    }
+    function hideLoading() {
+      const el = document.getElementById("loading-msg");
+      if (el) el.remove();
+    }
+
+    function setBusy(busy) {
+      inputBox.disabled = busy;
+      sendBtn.disabled = busy;
+      if (busy) {
+        sendBtn.innerHTML = '<span class="loading loading-spinner loading-sm"></span>';
+      } else {
+        sendBtn.innerHTML = 'Send <span class="plane-fly">✈</span>';
+      }
+    }
+
+    async function sendMessage() {
+      const message = inputBox.value.trim();
+      if (!message) return;
+
+      addMsg("human", "You", message);
+      inputBox.value = "";
+      setBusy(true);
+      showLoading();
+
+      try {
+        const res = await fetch("/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message })
+        });
+        const data = await res.json();
+        hideLoading();
+        if (data.answer) {
+          addMsg("ai", "Concierge", data.answer, true);
+        } else {
+          addMsg("error", "Concierge", data.error || "Something went wrong.");
+        }
+      } catch (e) {
+        hideLoading();
+        addMsg("error", "Concierge", "Connection failed. Is the server running?");
+      } finally {
+        setBusy(false);
+        inputBox.focus();
+      }
+    }
+
+    function quickAsk(q) {
+      inputBox.value = q;
+      sendMessage();
+    }
+
+    inputBox.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+</body>
+</html>
